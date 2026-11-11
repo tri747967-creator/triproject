@@ -732,6 +732,77 @@ body:not(.welcome-lock) .glow {
     animation: none !important;
   }
 }
+
+/* Micro-interactions: quick press, spring return, and subtle hover lift */
+@keyframes microTap {
+  0% { transform: scale(1); }
+  38% { transform: scale(.93); }
+  72% { transform: scale(1.035); }
+  100% { transform: scale(1); }
+}
+.micro-tap {
+  animation: microTap .34s cubic-bezier(.2,.8,.2,1);
+  transform-origin: center;
+}
+button, a, [role="button"] {
+  -webkit-tap-highlight-color: transparent;
+  transition: transform .2s cubic-bezier(.2,.8,.2,1),
+              box-shadow .2s ease, border-color .2s ease,
+              background-color .2s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  button:hover, a:hover, [role="button"]:hover {
+    transform: translateY(-2px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .micro-tap { animation: none !important; }
+}
+
+/* Three lightweight micro-interactions */
+#ktpScrollProgress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  z-index: 99997;
+  pointer-events: none;
+  background: transparent;
+}
+#ktpScrollProgress > span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left center;
+  box-shadow: 0 0 10px var(--accent), 0 0 18px var(--accent-soft);
+  will-change: transform;
+}
+.scroll-reveal {
+  transition: opacity .55s ease, transform .55s cubic-bezier(.2,.75,.25,1);
+}
+.scroll-reveal.reveal-ready:not(.is-visible) {
+  opacity: 0;
+  transform: translateY(16px);
+}
+.scroll-reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.click-reaction {
+  box-shadow: 0 0 0 4px var(--accent-soft), 0 0 22px var(--accent-soft) !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .scroll-reveal,
+  .scroll-reveal.reveal-ready:not(.is-visible) {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
 </style>
 </head>
 
@@ -853,13 +924,6 @@ body:not(.welcome-lock) .glow {
 <section id="embeddedWorkspace">
   <div class="workspace-toolbar">
     <button class="secondary" onclick="showPortfolioProjects()">← Kembali ke Project</button>
-    <button class="secondary" type="button" onclick="document.getElementById('openSettings')?.click()">⚙ Pengaturan</button>
-    <button class="secondary" onclick="openWebProjects()">Web Development</button>
-    <button class="secondary" onclick="openCreativeDesign()">Creative Design</button>
-    <button class="secondary" onclick="openProjectReasons()">My Reasons</button>
-    <button class="secondary" onclick="openMyWeb()">04 / My Web</button>
-    <button class="secondary" onclick="openDeveloperDashboard()">Developer Dashboard</button>
-    <button class="primary" onclick="openKinggsTools()">Buka KINGGS Tools</button>
   </div>
   <iframe id="workspaceFrame" title="KING TRI PROJECT workspace" sandbox="allow-scripts allow-forms allow-same-origin allow-downloads allow-modals allow-popups"></iframe>
 </section>
@@ -1520,6 +1584,101 @@ window.addEventListener('message', event => {
       feedback.textContent = '> BADGE ID: KING TRI PROJECT — CLASSIFIED VISITOR NO. 001';
     }
   });
+})();
+</script>
+
+
+<script>
+(() => {
+  const selector = 'button, a, [role="button"]';
+  const animateTap = (target) => {
+    const control = target.closest(selector);
+    if (!control || control.matches(':disabled,[aria-disabled="true"]')) return;
+    control.classList.remove('micro-tap');
+    void control.offsetWidth; // restart animation on rapid repeated taps
+    control.classList.add('micro-tap');
+  };
+
+  document.addEventListener('pointerdown', event => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    animateTap(event.target);
+  }, { passive: true });
+
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    if (event.target.matches?.(selector)) animateTap(event.target);
+  });
+
+  document.addEventListener('animationend', event => {
+    if (event.animationName === 'microTap') {
+      event.target.classList.remove('micro-tap');
+    }
+  });
+})();
+</script>
+
+
+<script>
+/* KING TRI — scroll progress, gentle reveal, and click reaction */
+(() => {
+  'use strict';
+
+  // 1) Scroll progress: visual-only, does not affect page layout.
+  const progress = document.createElement('div');
+  progress.id = 'ktpScrollProgress';
+  progress.setAttribute('aria-hidden', 'true');
+  progress.innerHTML = '<span></span>';
+  document.body.appendChild(progress);
+  const progressBar = progress.firstElementChild;
+  let progressTicking = false;
+
+  function updateProgress() {
+    const root = document.documentElement;
+    const maxScroll = root.scrollHeight - window.innerHeight;
+    const amount = maxScroll > 0 ? Math.min(1, Math.max(0, window.scrollY / maxScroll)) : 0;
+    progressBar.style.transform = `scaleX(${amount})`;
+    progressTicking = false;
+  }
+  function requestProgressUpdate() {
+    if (progressTicking) return;
+    progressTicking = true;
+    window.requestAnimationFrame(updateProgress);
+  }
+  window.addEventListener('scroll', requestProgressUpdate, { passive: true });
+  window.addEventListener('resize', requestProgressUpdate, { passive: true });
+  window.addEventListener('load', requestProgressUpdate);
+  updateProgress();
+
+  // 2) Gentle reveal. Elements remain visible if IntersectionObserver is unavailable.
+  const revealTargets = document.querySelectorAll(
+    'main > .hero, main > .section, main .cards > .card, footer'
+  );
+  if ('IntersectionObserver' in window && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const revealObserver = new IntersectionObserver((entries, observer) => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        entry.target.classList.add('is-visible');
+        observer.unobserve(entry.target);
+      });
+    }, { threshold: 0.08, rootMargin: '0px 0px -35px 0px' });
+
+    revealTargets.forEach(element => {
+      element.classList.add('scroll-reveal', 'reveal-ready');
+      revealObserver.observe(element);
+    });
+  }
+
+  // 3) Click reaction: glow feedback only; original click handlers remain untouched.
+  const interactiveSelector = 'button, a, [role="button"]';
+  document.addEventListener('pointerdown', event => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    const control = event.target.closest(interactiveSelector);
+    if (!control || control.matches(':disabled, [aria-disabled="true"]')) return;
+    control.classList.remove('click-reaction');
+    void control.offsetWidth;
+    control.classList.add('click-reaction');
+    window.setTimeout(() => control.classList.remove('click-reaction'), 420);
+  }, { passive: true });
 })();
 </script>
 
